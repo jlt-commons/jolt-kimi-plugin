@@ -1,6 +1,7 @@
 (ns kimi-plugin.smoke-test
-  "Start each MCP server in kimi.plugin.json the way Kimi does (its command
-  and args, run from the plugin directory) and drive it over stdio."
+  "Start each MCP server in kimi.plugin.json (the installed binaries on
+  PATH) from the plugin directory, the worst case for finding the project,
+  and drive it over stdio."
   (:require [babashka.fs :as fs]
             [babashka.process :as p]
             [clojure.data.json :as json]
@@ -13,9 +14,8 @@
 (def manifest (json/read-str (slurp (str plugin-dir "/kimi.plugin.json")) :key-fn keyword))
 
 (defn- start-server [server-name]
-  (let [{:keys [command args cwd]} (get-in manifest [:mcpServers server-name])
-        proc (p/process (into [command] args)
-                        {:dir (str (fs/path plugin-dir cwd)) :err :inherit})]
+  (let [{:keys [command args]} (get-in manifest [:mcpServers server-name])
+        proc (p/process (into [command] args) {:dir plugin-dir :err :inherit})]
     {:proc proc
      :in (io/writer (:in proc))
      :out (io/reader (:out proc))
@@ -73,7 +73,7 @@
           (is error?)
           (is (re-find #"pass cwd" text) text))
         (is (not (fs/exists? (str plugin-dir "/.nrepl-port")))))
-      (testing "with cwd it starts a server, and jolt-lsp's syntax repair closes a dropped paren"
+      (testing "with cwd it starts a server and closes a dropped paren"
         (let [{:keys [text error?]} (call srv "nrepl_eval" {:cwd proj :code "(require 'app.core) (app.core/greet \"kimi\""})]
           (is (not error?) text)
           (is (re-find #"started nREPL" text) text)

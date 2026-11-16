@@ -12,17 +12,17 @@
   },
   "mcpServers": {
     "jolt-nrepl": {
-      "command": "jolt",
-      "args": ["-m", "jolt-nrepl-mcp.server"],
-      "cwd": "./",
-      "startupTimeoutMs": 120000,
+      "command": "jolt-nrepl-mcp",
+      "args": [],
+      "startupTimeoutMs": 60000,
       "toolTimeoutMs": 610000
     },
     "jolt-lsp": {
-      "command": "jolt",
-      "args": ["-m", "jolt-lsp.main", "mcp"],
-      "cwd": "./",
-      "startupTimeoutMs": 120000,
+      "command": "jolt-lsp",
+      "args": [
+        "mcp"
+      ],
+      "startupTimeoutMs": 60000,
       "toolTimeoutMs": 300000
     }
   }

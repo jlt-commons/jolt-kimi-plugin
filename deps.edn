@@ -1,15 +1,7 @@
 {:jolt/min-version "0.8.25"
+ ;; The plugin runs the installed jolt-nrepl-mcp and jolt-lsp binaries; this
+ ;; file only runs the smoke test.
  :paths []
- ;; The plugin is the two MCP servers, run from their git releases.
- ;; jolt-nrepl-mcp depends on an older jolt-lsp; the top-level pin wins.
- :deps {io.github.jlt-commons/jolt-nrepl-mcp
-        {:git/url "https://github.com/jlt-commons/jolt-nrepl-mcp"
-         :git/tag "v0.4.1"
-         :git/sha "d051d622a528659971bea48e6d0d96ffe03f78dc"}
-        io.github.jlt-commons/jolt-lsp
-        {:git/url "https://github.com/jlt-commons/jolt-lsp"
-         :git/tag "v0.3.2"
-         :git/sha "272aa45a6172a67f929da39369a46aa4f16e8a69"}}
  :aliases {:test {:extra-paths ["test"]
                   :main-opts ["-m" "kimi-plugin.smoke-test"]}}
  :tasks {test {:doc "start both MCP servers as Kimi would and drive them"
