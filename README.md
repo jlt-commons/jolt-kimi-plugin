@@ -1,91 +1,77 @@
 # Jolt nREPL for Kimi Code
 
-A Kimi Code plugin that evaluates Clojure code in a persistent Jolt nREPL session. The plugin itself is written in Jolt and uses [`jolt-lang/nrepl`](https://github.com/jolt-lang/nrepl) for its direct bencode/TCP client.
+A Kimi Code plugin for Jolt/Clojure work. It registers two MCP servers that
+you install separately:
 
-## Features
+- [jolt-nrepl-mcp](https://github.com/jlt-commons/jolt-nrepl-mcp): a
+  persistent nREPL session. Eval with per-form output and syntax repair,
+  load-file, lookup, completion, clojure.test runs, and starting/stopping
+  `jolt nrepl-server` for the project.
+- [jolt-lsp](https://github.com/jlt-commons/jolt-lsp): navigation over a
+  project index, diagnostics, syntax check/repair, structural edits and
+  refactors.
 
-- Lazy connection from the project's `.nrepl-port`
-- One cloned session with persistent vars, namespaces, and loaded dependencies
-- Evaluation with values, stdout, stderr, namespace, and error status
-- Project-contained `load-file` support
-- Missing-delimiter repair with an explicit notice
-- Timeouts, forced disconnect, and no automatic replay after transport failure
-- Interrupt when the server advertises interrupt middleware
-- A session-start skill with Jolt development and testing workflows
-
-The plugin does not start or own your Jolt nREPL server. Start it in the project and leave it running:
-
-```bash
-jolt nrepl-server 0
-```
-
-Port `0` asks the OS for a free port and writes the selected port to `.nrepl-port`.
+This repo holds only the manifest, the skills and a smoke test. Tool
+behaviour is documented in the two projects.
 
 ## Requirements
 
-- Jolt 0.8.13 or newer on `PATH`
-- Kimi Code with plugin and MCP support
-- Network access and Jolt's normal dependency tools for the first dependency resolution
+On `PATH`:
 
-From this directory, prefetch the pinned dependencies:
+- `jolt-nrepl-mcp` v0.4.1 or newer
+- `jolt-lsp` v0.3.2 or newer
+- `jolt` 0.8.25 or newer (`nrepl_start` runs `jolt nrepl-server`)
+
+Older versions run, but a call that names no project acts on the plugin's
+own directory instead of being refused.
+
+Download the binaries from the
+[jolt-nrepl-mcp](https://github.com/jlt-commons/jolt-nrepl-mcp/releases) and
+[jolt-lsp](https://github.com/jlt-commons/jolt-lsp/releases) releases
+(macOS arm64, Linux x86_64), or build them from a checkout with `jolt dist`
+(output in `target/`), and put them on `PATH`:
 
 ```bash
-jolt -P
+tar xzf jolt-nrepl-mcp-v0.4.1-aarch64-macos.tar.gz
+xattr -d com.apple.quarantine jolt-nrepl-mcp-v0.4.1-aarch64-macos/jolt-nrepl-mcp  # macOS only
+cp jolt-nrepl-mcp-v0.4.1-aarch64-macos/jolt-nrepl-mcp ~/bin/
 ```
+
+and the same for `jolt-lsp`. Check with `jolt-lsp --version`.
 
 ## Install
 
-Install the local directory using its absolute path:
-
 ```text
-/plugins install /Users/yogthos/src/jlt-commons/kimi-nrepl-plugin
+/plugins install /path/to/kimi-nrepl-plugin
 ```
 
-Then run `/reload` or `/new`. Kimi runs the plugin from its managed copy, so reinstall after changing this source directory.
+Then `/reload` or `/new`. Kimi runs the plugin from its managed copy, so
+reinstall after changing this directory.
 
-## Tools
+## Use
 
-All eval/connect/load-file calls require the workspace's absolute `cwd`; the MCP process itself runs from the plugin directory.
+Pass the project on the first call: `cwd` for the `nrepl_*` tools, `root`
+(or an absolute `file`) for the `jolt_*` tools. Both are remembered for later
+calls. If Kimi starts the servers in the plugin's directory, a call that
+names no project is refused rather than acting on the plugin itself.
 
-| Tool | Arguments | Purpose |
-|---|---|---|
-| `nrepl_connect` | `cwd`, optional `host`, `port` | Connect or switch projects; reads `.nrepl-port` when `port` is omitted |
-| `nrepl_eval` | `cwd`, `code`, optional `timeoutMs` | Evaluate in the persistent session, connecting lazily if needed |
-| `nrepl_load_file` | `cwd`, `file`, optional `timeoutMs` | Load a real file contained under the project root |
-| `nrepl_status` | none | Show project, session, busy state, and interrupt capability |
-| `nrepl_interrupt` | none | Request interruption of the active eval when supported |
-| `nrepl_disconnect` | none | Close the session and socket; idempotent |
+A project with a `deps.edn` and no running nREPL gets `jolt nrepl-server`
+started on the first eval. `JOLT_NREPL_MCP_AUTOSTART=0` turns that off; set
+it in the server's `env` block in `kimi.plugin.json`.
 
-`timeoutMs` defaults to 120000 and accepts 1–300000. On timeout, the client requests interrupt when available, waits up to one second for the final response, and closes its connection so late messages cannot contaminate another eval. Without confirmed interrupt, server-side termination is uncertain.
+Skills: `jolt-nrepl` (loaded at session start: the REPL-first workflow),
+`jolt-lsp` (the navigation and refactoring tools) and `clj-refactor`. The
+first and last are copied from jolt-nrepl-mcp, `jolt-lsp` from the jolt
+skills; recopy them when upgrading the servers.
 
-A second eval while one is active returns a busy error. Connect is also rejected while busy. Disconnect is the explicit escape hatch: it tears down the active request and never replays the form.
-
-## Optional interrupt middleware
-
-Jolt's built-in handler supports `clone`, `describe`, `eval`, `load-file`, and `close`. Add the rich middleware to the project's `deps.edn` for interrupt and other standard operations:
-
-```clojure
-{:deps {jolt-lang/nrepl {:git/url "https://github.com/jolt-lang/nrepl"
-                         :git/tag "v0.4.0"
-                         :git/sha "16558b920864e5302a5c1433a78f977bbb64a9d1"}}
- :nrepl/middleware [nrepl.middleware/default-middleware]}
-```
-
-Restart `jolt nrepl-server` after changing dependencies. Interrupt works at safe points in compute-bound code; it cannot preempt a foreign call until that call returns.
-
-## Development and verification
+## Test
 
 ```bash
-jolt -P
-jolt -M:test
+jolt test
 ```
 
-The suite covers delimiter repair, JSON-RPC/MCP handling, real base and rich nREPL servers, persistent eval, load-file, errors, Unicode, timeout, interrupt, disconnect, restart/no-replay behavior, and the actual MCP stdio process.
+Starts each server in `kimi.plugin.json` (the binaries on `PATH`) from this
+directory and drives it over stdio: tool lists, the refusal without a
+project, an autostarted eval with syntax repair, and a jolt-lsp call that finds its project from a file path.
 
-## Troubleshooting
-
-- **No `.nrepl-port`:** start `jolt nrepl-server 0` in the intended project and wait for the file.
-- **Project mismatch:** call `nrepl_connect` with the new absolute `cwd`; eval will not silently reuse another project's session.
-- **Interrupt unsupported:** install `nrepl.middleware/default-middleware` and restart the server. A closed client socket alone does not prove the server-side form stopped.
-- **Dependency startup failure:** run `jolt -P` in the plugin directory and inspect Jolt's normal dependency/network diagnostics.
-- **Source changes do not appear in Kimi:** reinstall the plugin, then `/reload` or `/new`, because Kimi uses its managed copy.
+EPL-2.0.
