@@ -25,5 +25,24 @@
       "startupTimeoutMs": 60000,
       "toolTimeoutMs": 300000
     }
-  }
+  },
+  "hooks": [
+    {
+      "event": "PreToolUse",
+      "matcher": "^(Write|Edit)$",
+      "command": "./bin/jolt-kimi-hook",
+      "timeout": 60
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "^(Write|Edit)$",
+      "command": "./bin/jolt-kimi-hook",
+      "timeout": 60
+    },
+    {
+      "event": "Stop",
+      "command": "./bin/jolt-kimi-hook",
+      "timeout": 120
+    }
+  ]
 }

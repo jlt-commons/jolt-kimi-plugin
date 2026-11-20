@@ -52,7 +52,8 @@
 
 (defn- temp-project []
   (let [d (str (fs/canonicalize (fs/create-temp-dir {:prefix "kimi-smoke"})))]
-    (spit (str d "/deps.edn") "{:paths [\"src\"]}")
+    ;; a Jolt project, which jolt-nrepl-mcp autostarts a server for
+    (spit (str d "/deps.edn") "{:jolt/min-version \"0.8.25\" :paths [\"src\"]}")
     (fs/create-dirs (str d "/src/app"))
     (spit (str d "/src/app/core.clj") "(ns app.core)\n(defn greet [n] (str \"hi \" n))\n")
     d))
@@ -106,6 +107,55 @@
       (finally
         (stop-server srv)
         (fs/delete-tree proj {:force true})))))
+
+;; --- hooks ------------------------------------------------------------------
+
+(defn- hook-for [event]
+  (first (filter #(= event (:event %)) (:hooks manifest))))
+
+(defn- run-hook
+  "Run the manifest's hook for `event` as Kimi does: through a shell, in the
+  plugin dir, KIMI_PLUGIN_ROOT set, the input JSON on stdin. Its parsed
+  stdout, or nil."
+  [event state-dir input]
+  (let [{:keys [command]} (hook-for event)
+        {:keys [out]} (p/shell {:dir plugin-dir :in (json/write-str (assoc input :hook_event_name event))
+                                :out :string :err :inherit :continue true
+                                :extra-env {"KIMI_PLUGIN_ROOT" plugin-dir
+                                            "KIMI_HOOKS_STATE_DIR" state-dir}}
+                               "sh" "-c" command)]
+    (when-not (str/blank? out) (json/read-str out :key-fn keyword))))
+
+(deftest manifest-declares-the-hooks
+  (doseq [event ["PreToolUse" "PostToolUse" "Stop"]]
+    (is (hook-for event) event))
+  (is (re-matches (re-pattern (:matcher (hook-for "PreToolUse"))) "Edit"))
+  (is (re-matches (re-pattern (:matcher (hook-for "PostToolUse"))) "Write"))
+  (is (not (re-matches (re-pattern (:matcher (hook-for "PreToolUse"))) "Read"))))
+
+(deftest hooks-repair-refuse-and-lint
+  (let [proj (temp-project)
+        state (str (fs/canonicalize (fs/create-temp-dir {:prefix "kimi-hooks"})))
+        f (str proj "/src/app/core.clj")
+        sid "smoke-session"]
+    (try
+      (testing "PreToolUse refuses an edit that leaves the file unreadable"
+        (let [out (run-hook "PreToolUse" state {:tool_name "Edit" :session_id sid
+                                                :tool_input {:path f :old_string "(str \"hi \" n)"
+                                                             :new_string "(str \"hi \" n]"}})]
+          (is (= "deny" (get-in out [:hookSpecificOutput :permissionDecision])) (pr-str out))))
+      (testing "PostToolUse repairs a dropped closer on disk"
+        (spit f "(ns app.core)\n(defn greet [n] (nope n)\n")
+        (run-hook "PostToolUse" state {:tool_name "Write" :session_id sid :tool_input {:path f}})
+        (let [text (slurp f)]
+          (is (= (count (re-seq #"\(" text)) (count (re-seq #"\)" text))) text)))
+      (testing "Stop blocks on the error in the touched file"
+        (let [out (run-hook "Stop" state {:session_id sid})]
+          (is (str/includes? (str (get-in out [:hookSpecificOutput :permissionDecisionReason])) "nope")
+              (pr-str out))))
+      (finally
+        (fs/delete-tree proj {:force true})
+        (fs/delete-tree state {:force true})))))
 
 (defn -main [& _]
   (let [{:keys [fail error]} (t/run-tests 'kimi-plugin.smoke-test)]

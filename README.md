@@ -1,4 +1,4 @@
-# Jolt nREPL for Kimi Code
+# jolt-kimi-plugin
 
 A Kimi Code plugin for Jolt/Clojure work. It registers two MCP servers that
 you install separately:
@@ -11,8 +11,9 @@ you install separately:
   project index, diagnostics, syntax check/repair, structural edits and
   refactors.
 
-This repo holds only the manifest, the skills and a smoke test. Tool
-behaviour is documented in the two projects.
+It also runs hooks that repair and lint each Jolt/Clojure file the agent
+writes, with jolt-lsp; see Hooks below. Tool behaviour is documented in the
+two projects.
 
 ## Requirements
 
@@ -42,7 +43,7 @@ and the same for `jolt-lsp`. Check with `jolt-lsp --version`.
 ## Install
 
 ```text
-/plugins install /path/to/kimi-nrepl-plugin
+/plugins install /path/to/jolt-kimi-plugin
 ```
 
 Then `/reload` or `/new`. Kimi runs the plugin from its managed copy, so
@@ -61,8 +62,31 @@ it in the server's `env` block in `kimi.plugin.json`.
 
 Skills: `jolt-nrepl` (loaded at session start: the REPL-first workflow),
 `jolt-lsp` (the navigation and refactoring tools) and `clj-refactor`. The
-first and last are copied from jolt-nrepl-mcp, `jolt-lsp` from the jolt
-skills; recopy them when upgrading the servers.
+copies are written from [jolt-skills](https://github.com/jlt-commons/jolt-skills)
+by its `sync.sh`; edit them there.
+
+## Hooks
+
+The same checks as [jolt-claude-plugin](https://github.com/jlt-commons/jolt-claude-plugin)
+gives Claude Code, run by its `jolt-claude.kimi` namespace (fetched through
+the `:hooks` alias in `deps.edn`, so the first hook run needs network). Kimi
+ignores what a PostToolUse hook prints, so the checks sit on the hooks that
+can block:
+
+- PreToolUse on `Write` and `Edit` of a `.clj`, `.cljc`, `.edn` or `.jolt`
+  file: the call is refused when the text it would leave does not read as
+  Clojure, with the line and column. Text jolt-lsp can repair (a dropped
+  closer) goes through.
+- PostToolUse: the file is repaired on disk (`jolt-lsp check --fix`) and
+  noted for the session.
+- Stop: the files changed since the last stop are linted with the project's
+  `.clj-kondo/config.edn` and `.jolt-lsp/config.edn`; an error-level finding
+  blocks the stop and goes back to the agent as a `file:line:col` list.
+  Warnings are listed with errors but never block on their own.
+
+Unlike Claude Code, lint errors arrive when the agent tries to finish rather
+than after each edit. The hooks need `jolt` and `jolt-lsp` on `PATH`;
+without jolt-lsp they do nothing.
 
 ## Test
 
@@ -72,6 +96,6 @@ jolt test
 
 Starts each server in `kimi.plugin.json` (the binaries on `PATH`) from this
 directory and drives it over stdio: tool lists, the refusal without a
-project, an autostarted eval with syntax repair, and a jolt-lsp call that finds its project from a file path.
+project, an autostarted eval with syntax repair, and a jolt-lsp call that finds its project from a file path. It also runs each hook in the manifest as Kimi would: a refused edit, a repair on disk, and a Stop that reports a lint error.
 
 EPL-2.0.

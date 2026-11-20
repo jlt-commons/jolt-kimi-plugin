@@ -1,0 +1,7 @@
+#!/bin/sh
+# Kimi Code hook launcher: runs jolt-claude.kimi (from jolt-claude-plugin,
+# the :hooks alias) with this plugin's deps.edn. Hook input passes through
+# on stdin.
+here="$(cd "$(dirname "$0")" && pwd -P)"
+cd "${KIMI_PLUGIN_ROOT:-$here/..}" || exit 0
+exec "${JOLT:-jolt}" -M:hooks -m jolt-claude.kimi
